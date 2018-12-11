@@ -21,6 +21,17 @@ function init_read_file () {
     const all_vm = [];
     let line_count = 0;
 
+    async function write_file(all_vm) {
+        for (const vm_line of all_vm) {
+            const asm = translate_vm_to_asm(vm_line);
+            try {
+                await write_line(asm);
+            } catch(e) {
+                console.log(`error writing parsed asm: ${e}`);
+            }
+        }
+    }
+
     return function read_file() {
         rl.on('line', (vm_line) => {
             if (should_ignore_line(vm_line)) return;
@@ -136,19 +147,25 @@ function handle_logic(vm_line) {
             asm = math('sub', vm_line);
             break;
         case 'neg':
-            asm = neg(vm_line);
+            asm = neg_not(vm_line, '-');
             break;
         case 'eq':
+            asm = compare(vm_line, 'JEQ');
             break;
         case 'gt':
+            asm = compare(vm_line, 'JGT');
             break;
         case 'lt':
+            asm = compare(vm_line, 'JLT');
             break;
         case 'and':
+            asm = and_or(vm_line, '&');
             break;
         case 'or':
+            asm = and_or(vm_line, '|');
             break;
         case 'not':
+            asm = neg_not(vm_line, '!');
             break;
         default:
             console.log(`logic command not found: ${vm_line}`);
@@ -156,20 +173,70 @@ function handle_logic(vm_line) {
     return asm;
 }
 
-function neg(vm_line) {
-    // get top of stack and negate
+function and_or(vm_line, type) {
+    return `// ${vm_line}` +
+        '\n@SP' +
+        '\nA=M' +
+        '\nA=A-1' +
+        '\nA=A-1' +
+        '\nD=M' +
+        '\nA=A+1' +
+        `\nD=D${type}M` +
+        '\n@SP' +
+        '\nM=M-1' +
+        '\nM=M-1' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1\n';
+}
+
+var counter = 0;
+function compare(vm_line, type) {
+    counter += 1; // use counter as unique label
+    return `// ${vm_line}` +
+    '\n@SP' +
+    '\nA=M' +
+    '\nA=A-1' +
+    '\nA=A-1' +
+    '\nD=M' +
+    '\nA=A+1' +
+    '\nD=D-M' +
+    '\n@SP' +
+    '\nM=M-1' +
+    '\nM=M-1' +
+    `\n@TRUE${counter}` +
+    `\nD;${type}` +
+    '\n@SP' +
+    '\nA=M' +
+    '\nM=0' +
+    `\n@END${counter}` +
+    '\n0;JMP' +
+
+    `\n\n(TRUE${counter})` +
+    '\n@SP' +
+    '\nA=M' +
+    '\nM=-1' +
+
+    `\n\n(END${counter})` +
+    '\n@SP' +
+    '\nM=M+1\n';
+}
+
+function neg_not(vm_line, type) {
+    // get top of stack and negate/not
     return `// ${vm_line}` +
         '\n@SP' +  // M = 256
         '\nM=M-1' + // M = 255 - decrease pointer
         '\nA=M' +  // pointer A
-        '\nM=-M' + // RAM[255] = -RAM[255] 
+        `\nM=${type}M` + // RAM[255] = -RAM[255] 
         '\n@SP' +
         '\nM=M+1\n'; 
 }
 
 function math(type, vm_line) {
     const sign = type === 'add' ? '+' : '-';
-    // replace top of stack with top of stack + top of stack -1
+    // replace top of stack with top of stack {type +, -} top of stack -1
     return `// ${vm_line}` +
         '\n@SP' +
         '\nA=M' +
@@ -241,17 +308,6 @@ function translate_vm_to_asm(vm_line) {
         asm = handle_mem_access(vm_line);
     }
     return asm;
-}
-
-async function write_file(all_vm) {
-    for (const vm_line of all_vm) {
-        const asm = translate_vm_to_asm(vm_line);
-        try {
-            await write_line(asm);
-        } catch(e) {
-            console.log(`error writing parsed asm: ${e}`);
-        }
-    }
 }
 
 function write_line(parsed_asm) {
