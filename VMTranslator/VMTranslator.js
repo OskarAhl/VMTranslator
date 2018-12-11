@@ -34,9 +34,9 @@ function init_read_file () {
 }
 function push_constant_to_stack(vm_line) {
     const [, , address] = vm_line.split(' ');
-    return `//${vm_line}` +
+    return `// ${vm_line}` +
             `\n@${address}` +
-            '\nD=M' +
+            '\nD=A' +
             '\n@SP' +
             '\nA=M' +
             '\nM=D' +
@@ -57,7 +57,7 @@ function pop_to_segment(vm_line) {
     // pop = 1. add top of stack to mem_segment[address] 2. decrease SP
     return `// ${vm_line}` +
             `\n@${address}` +
-            '\nD=M' +
+            '\nD=A' +
             `\n@${mem_segment}` + // get pointer to pop address
             '\nA=M' +
             '\nD=D+A' + 
@@ -81,8 +81,8 @@ function pop_to_segment(vm_line) {
 
 function handle_temp(vm_line) {
     const [, , address] = vm_line.split(' ');
-    let temp_mem = 5;
-    let temp_address = Number(address) + temp_mem;
+    let temp_mem_start = 5;
+    let temp_address = Number(address) + temp_mem_start;
     if (vm_line.includes('pop')) {
         // decrease SP - add to temp[address]
         return `//${vm_line}` +
@@ -95,7 +95,7 @@ function handle_temp(vm_line) {
     }
     if (vm_line.includes('push')) {
         // increase SP - add temp[address] to stack
-        return `//${vm_line}` +
+        return `// ${vm_line}` +
         `\n@${temp_address}` +
         '\nD=M' +
         '\n@SP' +
@@ -126,8 +126,53 @@ function push_to_stack(vm_line) {
 }
 
 function handle_logic(vm_line) {
-    console.log(vm_line);
-    return vm_line;
+    // add, sub, neg, eq, gt, lt, and, or, not
+    let asm;
+    switch(vm_line) {
+        case 'add':
+            asm = math('add', vm_line);
+            break;
+        case 'sub':
+            asm = math('sub', vm_line);
+            break;
+        case 'neg':
+            break;
+        case 'eq':
+            break;
+        case 'gt':
+            break;
+        case 'lt':
+            break;
+        case 'and':
+            break;
+        case 'or':
+            break;
+        case 'not':
+            break;
+        default:
+            console.log(`logic command not found: ${vm_line}`);
+    }
+    return asm;
+}
+
+function math(type, vm_line) {
+    const sign = type === 'add' ? '+' : '-';
+    // replace top of stack with top of stack + top of stack -1
+    return `// ${vm_line}` +
+        '\n@SP' +
+        '\nA=M' +
+        '\nA=A-1' +
+        '\nA=A-1' +
+        '\nD=M' +
+        '\nA=A+1' +
+        `\nD=D${sign}M` +
+        '\n@SP' +
+        '\nM=M-1' +
+        '\nM=M-1' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1\n';
 }
 
 function handle_mem_access(vm_line) {
