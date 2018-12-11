@@ -136,6 +136,7 @@ function handle_logic(vm_line) {
             asm = math('sub', vm_line);
             break;
         case 'neg':
+            asm = neg(vm_line);
             break;
         case 'eq':
             break;
@@ -153,6 +154,17 @@ function handle_logic(vm_line) {
             console.log(`logic command not found: ${vm_line}`);
     }
     return asm;
+}
+
+function neg(vm_line) {
+    // get top of stack and negate
+    return `// ${vm_line}` +
+        '\n@SP' +  // M = 256
+        '\nM=M-1' + // M = 255 - decrease pointer
+        '\nA=M' +  // pointer A
+        '\nM=-M' + // RAM[255] = -RAM[255] 
+        '\n@SP' +
+        '\nM=M+1\n'; 
 }
 
 function math(type, vm_line) {
@@ -175,12 +187,40 @@ function math(type, vm_line) {
         '\nM=M+1\n';
 }
 
+function handle_pointer(vm_line) {
+    // pointer segment keeps track of this and that segments
+    const is_push = vm_line.includes('push');
+    const [, , address] = vm_line.split(' ');
+    const this_or_that = Number(address) === 1 ? 'THAT' : 'THIS';
+
+    if (is_push) {
+        return `// ${vm_line}` +
+        `\n@${this_or_that}` +
+        '\nD=M' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1\n';
+    }
+    // is_pop
+    return `// ${vm_line}` +
+    '\n@SP' +
+    '\nM=M-1' +
+    '\nA=M' +
+    '\nD=M' +
+    `\n@${this_or_that}` +
+    '\nM=D\n';
+}
+
 function handle_mem_access(vm_line) {
     let asm;
     if (vm_line.includes('constant')) {
         asm = push_constant_to_stack(vm_line);
     } else if (vm_line.includes('temp')) {
         asm = handle_temp(vm_line);
+    } else if (vm_line.includes('pointer')) {
+        asm = handle_pointer(vm_line);
     } else if (vm_line.includes('pop')) {
         asm = pop_to_segment(vm_line)
     } else if (vm_line.includes('push')) {
