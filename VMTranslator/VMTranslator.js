@@ -43,6 +43,7 @@ function init_read_file () {
         });
     }
 }
+
 function push_constant_to_stack(vm_line) {
     const [, , address] = vm_line.split(' ');
     return `// ${vm_line}` +
@@ -258,6 +259,7 @@ function handle_pointer(vm_line) {
     // pointer segment keeps track of this and that segments
     const is_push = vm_line.includes('push');
     const [, , address] = vm_line.split(' ');
+    // THAT = 1, THIS = 0
     const this_or_that = Number(address) === 1 ? 'THAT' : 'THIS';
 
     if (is_push) {
