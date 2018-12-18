@@ -12,6 +12,18 @@ out_file = fs.openSync(outfile_name, 'w');
 const init = init_read_file();
 init();
 
+// global vars:
+var current_function; // for branching
+var counter = 0; // unique id in compare(...) for jump
+
+function strip_vm(vm_line) {
+    const has_inline_comment = vm_line.includes('//');
+    if (has_inline_comment) {
+        return vm_line.split('//')[0].trim();
+    }
+    return vm_line.trim();
+}
+
 function init_read_file () {
     const rl = readline.createInterface({
         input: fs.createReadStream(file),
@@ -23,7 +35,9 @@ function init_read_file () {
 
     async function write_file(all_vm) {
         for (const vm_line of all_vm) {
-            const asm = translate_vm_to_asm(vm_line);
+            const vm_stripped = strip_vm(vm_line);
+            const asm = translate_vm_to_asm(vm_stripped);
+
             try {
                 await write_line(asm);
             } catch(e) {
@@ -192,7 +206,6 @@ function and_or(vm_line, type) {
         '\nM=M+1\n';
 }
 
-var counter = 0;
 function compare(vm_line, type) {
     counter += 1; // use counter as unique label
     return `// ${vm_line}` +
@@ -299,27 +312,46 @@ function handle_mem_access(vm_line) {
     }
     return asm;
 }
+
 function handle_branching(vm_line) {
-    console.log('branching: ', vm_line);
-    return vm_line;
+    const [, label] = vm_line.split(' ');
+
+    if (vm_line.includes('goto')) {
+        return `// ${vm_line}` +
+        `\n@${current_function}#${label}`;
+    }
+    if (vm_line.includes('label')) {
+        return `// ${vm_line}` +
+        `\n(${current_function}#${label})`; 
+    }
+    if (vm_line.includes('if-goto')) {
+        return `// ${vm_line}` +
+            '\n@SP' +
+            '\nM=M-1' +
+            '\nA=M' +
+            '\nD=M' +
+            `\n@${current_function}#${label}` +
+            '\nD;JNE\n';
+    }
 }
 
-function translate_function(vm_line, function_name) {
-    return `// ${vm_line}` +
-    `\n(${function_name})` + // initialize local variables
-    '\n@SP' +
-    '\nA=M' +
-    '\nM=0' +
-    '\n@SP' +
-    '\nM=M+1' +
-    '\n@SP' +
-    '\nA=M' +
-    '\nM=0' +
-    '\n@SP' +
-    '\nM=M+1\n';
+function translate_function(vm_line, function_name, local_vars) {
+    let asm = `// ${vm_line}` + `\n(${function_name})`;
+    // initialize n local variables
+    for (let i = 0; i < Number(local_vars); i++) {
+        asm += (
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=0' +
+        '\n@SP' +
+        '\nM=M+1');
+    }
+
+    return asm + '\n';
 }
 
 function translate_return(vm_line) {
+    // cleanup, terminate execution and return control to call
     return `// ${vm_line}` +
     '\n@LCL' +
     '\nD=M' +
@@ -329,7 +361,7 @@ function translate_return(vm_line) {
     '\nD=D-A' +
     '\nA=D' +
     '\nD=M' +
-    '\n@RET' + // return address (frame - 5)
+    '\n@RET' + // return address = (frame - 5)
     '\nM=D' +
     '\n@SP' +
     '\nM=M-1' +
@@ -376,14 +408,15 @@ function translate_return(vm_line) {
     '\nM=D' +
     '\n@RET' +
     '\nA=M' +
-    '\n0;JMP\n'; // GOTO return address
+    '\n0;JMP\n'; // Transfer control back -- GOTO return address
 }
 
 function handle_function(vm_line) {
-    const [, function_name, ] = vm_line.split(' ');
+    const [, function_name, local_vars] = vm_line.split(' ');
     let asm;
     if (vm_line.includes('function')) {
-        asm = translate_function(vm_line, function_name);
+        current_function = function_name;
+        asm = translate_function(vm_line, function_name, local_vars);
     } else if (vm_line.includes('return')) {
         asm = translate_return(vm_line);
     }
