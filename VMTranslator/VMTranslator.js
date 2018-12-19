@@ -2,6 +2,14 @@ const readline = require('readline');
 const fs = require('fs');
 const file = process.argv[2];
 
+fs.lstat(file, (err, stats) => {
+    if (err) console.log('lstat err: ', err);
+
+    // TODO: make array of .vm filenames init_readFile through each of them
+    console.log(stats.isFile());
+    console.log(stats.isDirectory());
+});
+
 const outfile_name = file
     .split('/')
     .find((file) => file.includes('.vm'))
@@ -414,10 +422,10 @@ function translate_return(vm_line) {
 
 var function_id = 0;
 function translate_call(vm_line) {
-    const [command, function_name, args] = vm_line.split('');
+    const [, function_name, args] = vm_line.split('');
     function_id += 1;
     return `// ${vm_line}` +
-        `\n@RETURN#${function_id}` +
+        `\n@RETURN${function_id}` +
         '\nD=A' +
         '\n@SP' +
         '\nA=M' +
@@ -465,7 +473,7 @@ function translate_call(vm_line) {
         '\nM=D' +
         `\n@${function_name}` +
         '\n0;JMP' +
-        `\n(RETURN#${function_id})\n`;
+        `\n(RETURN${function_id})\n`;
 }
 
 function handle_function(vm_line) {
