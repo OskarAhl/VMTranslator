@@ -316,22 +316,23 @@ function handle_mem_access(vm_line) {
 function handle_branching(vm_line) {
     const [, label] = vm_line.split(' ');
 
-    if (vm_line.includes('goto')) {
-        return `// ${vm_line}` +
-        `\n@${current_function}#${label}`;
-    }
-    if (vm_line.includes('label')) {
-        return `// ${vm_line}` +
-        `\n(${current_function}#${label})`; 
-    }
     if (vm_line.includes('if-goto')) {
         return `// ${vm_line}` +
             '\n@SP' +
             '\nM=M-1' +
             '\nA=M' +
             '\nD=M' +
-            `\n@${current_function}#${label}` +
+            `\n@${current_function ? current_function : ''}${label}` +
             '\nD;JNE\n';
+    }
+    if (vm_line.includes('goto')) {
+        return `// ${vm_line}` +
+        `\n@${current_function ? current_function : ''}${label}` +
+        '\n0;JMP\n';
+    }
+    if (vm_line.includes('label')) {
+        return `// ${vm_line}` +
+        `\n(${current_function ? current_function : ''}${label})\n`; 
     }
 }
 
@@ -411,6 +412,62 @@ function translate_return(vm_line) {
     '\n0;JMP\n'; // Transfer control back -- GOTO return address
 }
 
+var function_id = 0;
+function translate_call(vm_line) {
+    const [command, function_name, args] = vm_line.split('');
+    function_id += 1;
+    return `// ${vm_line}` +
+        `\n@RETURN#${function_id}` +
+        '\nD=A' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\n@LCL' +
+        '\nD=M' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\n@ARG' +
+        '\nD=M' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\n@THIS' +
+        '\nD=M' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\n@THAT' +
+        '\nD=M' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\nD=M' +
+        `\n@${args}` +
+        '\nD=D-A' +
+        '\n@5' +
+        '\nD=D-A' +
+        '\n@ARG' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nD=M' +
+        '\n@LCL' +
+        '\nM=D' +
+        `\n@${function_name}` +
+        '\n0;JMP' +
+        `\n(RETURN#${function_id})\n`;
+}
+
 function handle_function(vm_line) {
     const [, function_name, local_vars] = vm_line.split(' ');
     let asm;
@@ -419,6 +476,8 @@ function handle_function(vm_line) {
         asm = translate_function(vm_line, function_name, local_vars);
     } else if (vm_line.includes('return')) {
         asm = translate_return(vm_line);
+    } else if (vm_line.includes('call')) {
+        asm = translate_call(vm_line);
     }
     return asm;
 }
