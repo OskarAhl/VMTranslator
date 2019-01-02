@@ -1,24 +1,32 @@
 const readline = require('readline');
 const fs = require('fs');
 const file = process.argv[2];
-
+let outfile_name;
 fs.lstat(file, (err, stats) => {
     if (err) console.log('lstat err: ', err);
 
-    // TODO: make array of .vm filenames init_readFile through each of them
-    console.log(stats.isFile());
-    console.log(stats.isDirectory());
+    console.log('isFile: ', stats.isFile());
+    console.log('isDirectory: ', stats.isDirectory());
+
+    if (stats.isFile()) {
+        outfile_name = file
+        .split('/')
+        .find((file) => file.includes('.vm'))
+        .replace(/.vm/, '.asm');
+
+        out_file = fs.openSync(outfile_name, 'w');
+        const init = init_read_file();
+        init();
+    } else if (stats.isDirectory()) {
+        const file_split = file.split('/');
+        outfile_name = file_split[file_split.length - 1] + '.vm';
+
+        // TODO: make array of .vm filenames init_readFile through each of them
+    }
 });
 
-const outfile_name = file
-    .split('/')
-    .find((file) => file.includes('.vm'))
-    .replace(/.vm/, '.asm');
 
-out_file = fs.openSync(outfile_name, 'w');
 
-const init = init_read_file();
-init();
 
 // global vars:
 var current_function; // for branching
@@ -422,7 +430,7 @@ function translate_return(vm_line) {
 
 var function_id = 0;
 function translate_call(vm_line) {
-    const [, function_name, args] = vm_line.split('');
+    const [, function_name, args] = vm_line.split(' ');
     function_id += 1;
     return `// ${vm_line}` +
         `\n@RETURN${function_id}` +
