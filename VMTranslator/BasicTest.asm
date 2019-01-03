@@ -207,7 +207,7 @@ D=M
 @11
 M=D
 
-//push local 0
+// push local 0
 @0
 D=A
 @LCL
@@ -221,7 +221,7 @@ M=D
 @SP
 M=M+1
 
-//push that 5
+// push that 5
 @5
 D=A
 @THAT
@@ -251,7 +251,7 @@ M=D
 @SP
 M=M+1
 
-//push argument 1
+// push argument 1
 @1
 D=A
 @ARG
@@ -281,7 +281,7 @@ M=D
 @SP
 M=M+1
 
-//push this 6
+// push this 6
 @6
 D=A
 @THIS
@@ -295,7 +295,7 @@ M=D
 @SP
 M=M+1
 
-//push this 6
+// push this 6
 @6
 D=A
 @THIS

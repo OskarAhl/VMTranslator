@@ -1,12 +1,10 @@
 const readline = require('readline');
 const fs = require('fs');
 const file = process.argv[2];
-let outfile_name;
-fs.lstat(file, (err, stats) => {
-    if (err) console.log('lstat err: ', err);
 
-    console.log('isFile: ', stats.isFile());
-    console.log('isDirectory: ', stats.isDirectory());
+fs.lstat(file, (err, stats) => {
+    let outfile_name;
+    if (err) console.log('lstat err: ', err);
 
     if (stats.isFile()) {
         outfile_name = file
@@ -15,18 +13,27 @@ fs.lstat(file, (err, stats) => {
         .replace(/.vm/, '.asm');
 
         out_file = fs.openSync(outfile_name, 'w');
-        const init = init_read_file();
-        init();
+        const init = init_read_file(file);
+        init().then(() => write_file(all_vm));
     } else if (stats.isDirectory()) {
         const file_split = file.split('/');
-        outfile_name = file_split[file_split.length - 1] + '.vm';
+        outfile_name = file_split[file_split.length - 1] + '.asm';
+        out_file = fs.openSync(outfile_name, 'w');
 
-        // TODO: make array of .vm filenames init_readFile through each of them
+        fs.readdir(file, (err, folder_content) => {
+            if (err) console.log('error reading directory ', file);
+            const file_names = folder_content.filter((file_name) => file_name.endsWith('vm'));
+    
+            (async function () {
+                for (let file_name of file_names) {
+                        const init = init_read_file(`${file}/${file_name}`);
+                        await init();
+                }
+                write_file(all_vm);
+            })();
+        });
     }
 });
-
-
-
 
 // global vars:
 var current_function; // for branching
@@ -40,37 +47,40 @@ function strip_vm(vm_line) {
     return vm_line.trim();
 }
 
-function init_read_file () {
+const all_vm = [];
+async function write_file(all_vm) {
+    for (const vm_line of all_vm) {
+        const vm_stripped = strip_vm(vm_line);
+        const asm = translate_vm_to_asm(vm_stripped);
+
+        try {
+            await write_line(asm);
+        } catch(e) {
+            console.log(`error writing parsed asm: ${e}`);
+        }
+    }
+}
+
+function init_read_file (file) {
+    console.log('parsing: ', file);
     const rl = readline.createInterface({
         input: fs.createReadStream(file),
         output: process.stdout,
         terminal: false
     });
-    const all_vm = [];
     let line_count = 0;
 
-    async function write_file(all_vm) {
-        for (const vm_line of all_vm) {
-            const vm_stripped = strip_vm(vm_line);
-            const asm = translate_vm_to_asm(vm_stripped);
-
-            try {
-                await write_line(asm);
-            } catch(e) {
-                console.log(`error writing parsed asm: ${e}`);
-            }
-        }
-    }
-
     return function read_file() {
-        rl.on('line', (vm_line) => {
-            if (should_ignore_line(vm_line)) return;
-    
-            line_count += 1;
-            all_vm.push(vm_line);
-        }).on('close', () => {
-            write_file(all_vm);
-        });
+        return new Promise((resolve, reject) => {
+            rl.on('line', (vm_line) => {
+                if (should_ignore_line(vm_line)) return;
+        
+                line_count += 1;
+                all_vm.push(vm_line);
+            }).on('close', () => {
+                resolve();
+            });
+        })
     }
 }
 
