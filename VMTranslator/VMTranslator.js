@@ -19,7 +19,7 @@ fs.lstat(file, (err, stats) => {
         const init = init_read_file(file);
         init().then(() => write_file(all_vm));
     } else if (stats.isDirectory()) {
-        const file_split = file.split('/');
+        const file_split = file.split('/').filter(Boolean);
         outfile_name = file_split[file_split.length - 1] + '.asm';
         out_file = fs.openSync(outfile_name, 'w');
 
