@@ -1,12 +1,15 @@
 const readline = require('readline');
 const fs = require('fs');
 const file = process.argv[2];
+let file_name;
 
 fs.lstat(file, (err, stats) => {
     let outfile_name;
     if (err) console.log('lstat err: ', err);
 
     if (stats.isFile()) {
+        file_name = file;
+
         outfile_name = file
         .split('/')
         .find((file) => file.includes('.vm'))
@@ -22,10 +25,13 @@ fs.lstat(file, (err, stats) => {
 
         fs.readdir(file, (err, folder_content) => {
             if (err) console.log('error reading directory ', file);
-            const file_names = folder_content.filter((file_name) => file_name.endsWith('vm'));
+            const vm_file_names = folder_content.filter((file_name) => file_name.endsWith('vm'));
     
             (async function () {
-                for (let file_name of file_names) {
+                for (let file_name of vm_file_names) {
+                        if (file_name === 'Sys.vm') {
+                            all_vm.unshift('bootstrap');
+                        }
                         const init = init_read_file(`${file}/${file_name}`);
                         await init();
                 }
@@ -76,6 +82,10 @@ function init_read_file (file) {
                 if (should_ignore_line(vm_line)) return;
         
                 line_count += 1;
+                if (vm_line.includes('static')) {
+                    const current_file_arr = file.split('/');
+                    vm_line = `${vm_line} ${ current_file_arr[current_file_arr.length - 1] }`
+                }
                 all_vm.push(vm_line);
             }).on('close', () => {
                 resolve();
@@ -103,9 +113,19 @@ const mem_segment_asm = {
     that: 'THAT',
 };
 
-function pop_to_segment(vm_line) {
-    const [, mem_segment_vm, address] = vm_line.split(' ');
+function handle_pop(vm_line) {
+    const [, mem_segment_vm, address, file] = vm_line.split(' ');
     const mem_segment = mem_segment_asm[mem_segment_vm];
+
+    if (mem_segment_vm === 'static') {
+        return `// ${vm_line}` + 
+            '\n@SP' +
+            '\nM=M-1' +
+            '\nA=M' +
+            '\nD=M' +
+            `\n@${file.replace(/.vm/, '')}.${address}` +
+            '\nM=D\n';
+    }
     // pop = 1. add top of stack to mem_segment[address] 2. decrease SP
     return `// ${vm_line}` +
             `\n@${address}` +
@@ -158,10 +178,21 @@ function handle_temp(vm_line) {
     }
 }
 
-function push_to_stack(vm_line) {
-    const [, mem_segment_vm, address] = vm_line.split(' ');
+function handle_push(vm_line) {
+    const [, mem_segment_vm, address, file_name] = vm_line.split(' ');
     const mem_segment = mem_segment_asm[mem_segment_vm];
     // increment SP, add segment_vm[address] to top of stack
+    if (mem_segment_vm === 'static') {
+        return `// ${vm_line}` +
+            `\n@${file_name.replace(/.vm/, '')}.${address}` +
+            '\nD=M' +
+            '\n@SP' +
+            '\nA=M' +
+            '\nM=D' +
+            '\n@SP' +
+            '\nM=M+1\n';
+    }
+
     return `// ${vm_line}` +
         `\n@${address}` +
         '\nD=A' +
@@ -330,9 +361,9 @@ function handle_mem_access(vm_line) {
     } else if (vm_line.includes('pointer')) {
         asm = handle_pointer(vm_line);
     } else if (vm_line.includes('pop')) {
-        asm = pop_to_segment(vm_line)
+        asm = handle_pop(vm_line)
     } else if (vm_line.includes('push')) {
-        asm = push_to_stack(vm_line)
+        asm = handle_push(vm_line)
     } else {
         asm = 'Not identified: ' + vm_line;
     }
@@ -507,6 +538,65 @@ function handle_function(vm_line) {
     }
     return asm;
 }
+function handle_bootstrap(vm_line) {
+    return `\n// ${vm_line}` +
+        '\n@256' +
+        '\nD=A' +
+        '\n@SP' +
+        '\nM=D\n' +
+        '\n// call Sys.init 0' +
+        '\n@RETURNbootstrap' +
+        '\nD=A' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\n@LCL' +
+        '\nD=M' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\n@ARG' +
+        '\nD=M' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\n@THIS' +
+        '\nD=M' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\n@THAT' +
+        '\nD=M' +
+        '\n@SP' +
+        '\nA=M' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nM=M+1' +
+        '\nD=M' +
+        '\n@0' +
+        '\nD=D-A' +
+        '\n@5' +
+        '\nD=D-A' +
+        '\n@ARG' +
+        '\nM=D' +
+        '\n@SP' +
+        '\nD=M' +
+        '\n@LCL' +
+        '\nM=D' +
+        '\n@Sys.init' +
+        '\n0;JMP // goto Sys.init' +
+        '\n(RETURNbootstrap)\n';
+
+}
+
 function translate_vm_to_asm(vm_line) {
     let asm;
     const commands = vm_line.split(' ');
@@ -514,8 +604,11 @@ function translate_vm_to_asm(vm_line) {
     const is_branching_command = commands.length === 2;
     const function_commands = ['function', 'call', 'return'];
     const is_function_command = function_commands.some((function_command) => commands.includes(function_command));
+    const is_bootstrap = vm_line === 'bootstrap';
 
-    if (is_function_command) {
+    if (is_bootstrap) {
+        asm = handle_bootstrap(vm_line);
+    } else if (is_function_command) {
         asm = handle_function(vm_line);
     } else if (is_branching_command) {
         asm = handle_branching(vm_line);
